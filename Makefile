@@ -1,4 +1,4 @@
-# LeiOS Grub Theme — build, package, install and test helpers.
+# LeiOS Plymouth Theme — build, package, install and test helpers.
 # All destructive commands validate their target variables to prevent
 # accidental damage if a variable is empty.
 
