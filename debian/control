@@ -9,12 +9,12 @@ Rules-Requires-Root: no
 
 Package: leios.theme.plymouth-theme
 Architecture: all
-Depends: ${misc:Depends}
-Recommends: grub-common
-Description: LeiOS GRUB2 gfxmenu theme
- This package provides the LeiOS theme for the GRUB2 boot menu.
+Depends: ${misc:Depends}, plymouth
+Recommends: initramfs-tools
+Description: LeiOS Plymouth boot theme
+ This package provides the LeiOS theme for the Plymouth boot splash.
  .
- It includes the theme description, background image, fonts, icons and
- selection artwork for GRUB's gfxmenu subsystem. On installation the
- theme is activated in /etc/default/grub and update-grub is run; on
- removal the theme line is removed and GRUB is updated again.
+ It includes the theme description, background image, logo and a blurred
+ bottom panel for readable startup logs. On installation the theme is set
+ as the Plymouth default in /usr/share/plymouth/plymouthd.defaults and the
+ initramfs is rebuilt.

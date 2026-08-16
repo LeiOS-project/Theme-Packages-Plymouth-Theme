@@ -1,54 +1,43 @@
 #!/bin/sh
 # postinst for leios.theme.plymouth-theme
-# Activates the LeiOS GRUB2 theme and rebuilds the GRUB configuration.
+# Sets LeiOS as the default Plymouth theme and rebuilds the initramfs.
 
 set -e
 
-THEME_FILE="/usr/share/grub/themes/leios-theme/theme.txt"
-BACKGROUND_FILE="/usr/share/grub/themes/leios-theme/background.jpg"
-GRUB_DEFAULT="/etc/default/grub"
+THEME="leios"
+DEFAULTS="/usr/share/plymouth/plymouthd.defaults"
+STATE_DIR="/var/lib/leios.theme.plymouth-theme"
+PREVIOUS_THEME_FILE="${STATE_DIR}/previous-theme"
 
-grub_update() {
-    if [ -x /usr/sbin/update-grub ]; then
-        /usr/sbin/update-grub || true
-    elif command -v update-grub >/dev/null 2>&1; then
-        update-grub || true
-    else
-        echo "WARNING: update-grub not found; please run it manually to activate the theme" >&2
+save_previous_theme() {
+    if [ ! -f "${PREVIOUS_THEME_FILE}" ]; then
+        mkdir -p "${STATE_DIR}"
+        CURRENT=$(sed -n 's/^[[:space:]]*Theme=\(.*\)/\1/p' "${DEFAULTS}" | head -1)
+        echo "${CURRENT:-ceratopsian}" > "${PREVIOUS_THEME_FILE}"
     fi
 }
 
-activate_theme() {
-    if [ ! -f "${GRUB_DEFAULT}" ]; then
-        echo "WARNING: ${GRUB_DEFAULT} not found, skipping GRUB configuration" >&2
-        return 0
+set_default_theme() {
+    if [ -f "${DEFAULTS}" ]; then
+        save_previous_theme
+        sed -i 's/^[[:space:]]*Theme=.*/Theme='"${THEME}"'/' "${DEFAULTS}"
+    else
+        echo "WARNING: ${DEFAULTS} not found, cannot set default Plymouth theme" >&2
     fi
+}
 
-    # Remove any existing GRUB_THEME line to avoid duplicates.
-    sed -i '/^[[:space:]]*GRUB_THEME=/d' "${GRUB_DEFAULT}"
-
-    # Remove any existing GRUB_BACKGROUND line to avoid duplicates.
-    sed -i '/^[[:space:]]*GRUB_BACKGROUND=/d' "${GRUB_DEFAULT}"
-
-    # Activate the LeiOS theme.
-    printf '\n# LeiOS GRUB theme\nGRUB_THEME="%s"\n' "${THEME_FILE}" >> "${GRUB_DEFAULT}"
-
-    # Override the distribution background image with the LeiOS background so
-    # there is no visible flash when GRUB hands off to Plymouth.
-    printf 'GRUB_BACKGROUND="%s"\n' "${BACKGROUND_FILE}" >> "${GRUB_DEFAULT}"
-
-    # Set a reasonable graphics mode if none is configured.
-    if ! grep -q '^[[:space:]]*GRUB_GFXMODE=' "${GRUB_DEFAULT}"; then
-        printf 'GRUB_GFXMODE="1920x1080,auto"\n' >> "${GRUB_DEFAULT}"
-        # printf 'GRUB_GFXMODE="auto"\n' >> "${GRUB_DEFAULT}"
+rebuild_initramfs() {
+    if [ -x /usr/sbin/update-initramfs ]; then
+        update-initramfs -u || true
+    else
+        echo "WARNING: update-initramfs not found; please rebuild the initramfs manually" >&2
     fi
-
-    grub_update
 }
 
 case "$1" in
     configure|triggered)
-        activate_theme
+        set_default_theme
+        rebuild_initramfs
     ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)

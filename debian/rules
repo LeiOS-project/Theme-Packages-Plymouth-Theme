@@ -14,8 +14,8 @@ override_dh_auto_clean:
 override_dh_auto_test:
 
 override_dh_auto_install:
-	rm -rf debian/leios.theme.plymouth-theme/usr/share/grub/themes/leios-theme
-	mkdir -p debian/leios.theme.plymouth-theme/usr/share/grub/themes
-	cp -a src debian/leios.theme.plymouth-theme/usr/share/grub/themes/leios-theme
+	rm -rf debian/leios.theme.plymouth-theme/usr/share/plymouth/themes/leios
+	mkdir -p debian/leios.theme.plymouth-theme/usr/share/plymouth/themes
+	cp -a src debian/leios.theme.plymouth-theme/usr/share/plymouth/themes/leios
 
 override_dh_auto_build:

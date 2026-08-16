@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=LeiOS
+Description=LeiOS Plymouth boot theme
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/leios
+ScriptFile=/usr/share/plymouth/themes/leios/leios.script

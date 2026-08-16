@@ -1,44 +1,33 @@
 #!/bin/sh
 # postrm for leios.theme.plymouth-theme
-# Deactivates the LeiOS GRUB2 theme and rebuilds the GRUB configuration.
+# Restores the previous Plymouth default theme and rebuilds the initramfs.
 
 set -e
 
-THEME_FILE="/usr/share/grub/themes/leios-theme/theme.txt"
-BACKGROUND_FILE="/usr/share/grub/themes/leios-theme/background.jpg"
-GRUB_DEFAULT="/etc/default/grub"
+THEME="leios"
+DEFAULTS="/usr/share/plymouth/plymouthd.defaults"
+STATE_DIR="/var/lib/leios.theme.plymouth-theme"
+PREVIOUS_THEME_FILE="${STATE_DIR}/previous-theme"
 
-grub_update() {
-    if [ -x /usr/sbin/update-grub ]; then
-        /usr/sbin/update-grub || true
-    elif command -v update-grub >/dev/null 2>&1; then
-        update-grub || true
+restore_previous_theme() {
+    if [ -f "${DEFAULTS}" ] && [ -f "${PREVIOUS_THEME_FILE}" ]; then
+        PREVIOUS=$(cat "${PREVIOUS_THEME_FILE}")
+        sed -i 's/^[[:space:]]*Theme=.*/Theme='"${PREVIOUS}"'/' "${DEFAULTS}"
     fi
+    rm -f "${PREVIOUS_THEME_FILE}"
+    rmdir "${STATE_DIR}" 2>/dev/null || true
 }
 
-deactivate_theme() {
-    if [ ! -f "${GRUB_DEFAULT}" ]; then
-        return 0
+rebuild_initramfs() {
+    if [ -x /usr/sbin/update-initramfs ]; then
+        update-initramfs -u || true
     fi
-
-    # Remove the LeiOS theme line and any trailing blank lines it may have left.
-    sed -i '\|^[[:space:]]*GRUB_THEME="'"${THEME_FILE}"'"|d' "${GRUB_DEFAULT}"
-
-    # Remove the LeiOS background override.
-    sed -i '\|^[[:space:]]*GRUB_BACKGROUND="'"${BACKGROUND_FILE}"'"|d' "${GRUB_DEFAULT}"
-
-    # Remove our comment marker if it is now orphaned.
-    sed -i '/^[[:space:]]*# LeiOS GRUB theme$/d' "${GRUB_DEFAULT}"
-
-    # Remove empty trailing lines to keep the file tidy.
-    sed -i -e :a -e '/^\n*$/{$d;N;};/\n$/ba' "${GRUB_DEFAULT}" || true
-
-    grub_update
 }
 
 case "$1" in
     remove|purge|disappear)
-        deactivate_theme
+        restore_previous_theme
+        rebuild_initramfs
     ;;
 
     upgrade|failed-upgrade|abort-install|abort-upgrade)
