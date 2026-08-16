@@ -8,7 +8,7 @@ DEB_BUILD_OUTPUT_DIR := deb-build
 # Guard macro: abort if a variable is empty.
 require_var = $(if $(strip $1),,$(error Required variable is empty: $2))
 
-.PHONY: all clean distclean package install update
+.PHONY: all clean distclean package install update test
 
 all: package
 
@@ -48,3 +48,66 @@ update: package
 	@:$(call require_var,$(DEB_BUILD_OUTPUT_DIR),DEB_BUILD_OUTPUT_DIR)
 	sudo dpkg -i $(DEB_BUILD_OUTPUT_DIR)/$(PACKAGE_NAME)_*.deb || \
 		(sudo apt-get install -f -y && sudo dpkg -i $(DEB_BUILD_OUTPUT_DIR)/$(PACKAGE_NAME)_*.deb)
+
+# Safe Plymouth preview: copies the theme into /usr/share/plymouth/themes/leios
+# temporarily, runs plymouthd on the active virtual console for a few seconds,
+# then restores/cleans everything up. This does NOT modify
+# /etc/plymouth/plymouthd.conf, /usr/share/plymouth/plymouthd.defaults, GRUB,
+# or the initramfs. Plymouth only has DRM/frame-buffer renderers here, so it
+# cannot be previewed inside Xephyr; the active TTY will briefly show the splash.
+test:
+	@:$(call require_var,$(PACKAGE_NAME),PACKAGE_NAME)
+	@echo "Checking test dependencies..."
+	@command -v plymouthd >/dev/null 2>&1 || { echo "ERROR: plymouthd not found"; exit 1; }
+	@command -v plymouth >/dev/null 2>&1 || { echo "ERROR: plymouth client not found"; exit 1; }
+	@echo ""
+	@echo "WARNING: Plymouth only has DRM/frame-buffer renderers on this system,"
+	@echo "         so it cannot be previewed inside Xephyr. This target will"
+	@echo "         briefly take over the active virtual console to show the"
+	@echo "         splash. No config files or initramfs will be changed."
+	@echo "         Press Ctrl+C within 3 seconds to abort."
+	@echo ""
+	@sleep 3
+	@set -e; \
+	TESTDIR="/usr/share/plymouth/themes/leios"; \
+	BACKUP=""; \
+	if [ -e "$$TESTDIR" ]; then \
+		BACKUP="/tmp/leios-plymouth-theme-backup.$$$$(date +%s)"; \
+		echo "Backing up existing $$TESTDIR to $$BACKUP ..."; \
+		sudo mv "$$TESTDIR" "$$BACKUP"; \
+	fi; \
+	cleanup() { \
+		echo ""; \
+		echo "Cleaning up..."; \
+		sudo plymouth --quit 2>/dev/null || true; \
+		sleep 0.5; \
+		if [ -n "$$BACKUP" ] && [ -e "$$BACKUP" ]; then \
+			sudo rm -rf "$$TESTDIR" 2>/dev/null || true; \
+			sudo mv "$$BACKUP" "$$TESTDIR"; \
+		elif [ -e "$$TESTDIR" ]; then \
+			sudo rm -rf "$$TESTDIR"; \
+		fi; \
+	}; \
+	trap cleanup EXIT INT TERM; \
+	echo "Copying theme to $$TESTDIR ..."; \
+	sudo mkdir -p "$$TESTDIR"; \
+	sudo cp -a src/* "$$TESTDIR/"; \
+	echo "Starting plymouthd on the active TTY ..."; \
+	CURRENT_TTY=$$(fgconsole 2>/dev/null || echo "1"); \
+	sudo plymouthd --debug --no-daemon --ignore-serial-consoles \
+		--theme=leios --tty="/dev/tty$$CURRENT_TTY" & \
+	PPID=$$!; \
+	sleep 1; \
+	echo "Showing splash ..."; \
+	sudo plymouth --show-splash; \
+	sleep 1; \
+	sudo plymouth message --text="LeiOS Plymouth theme test"; \
+	sleep 2; \
+	sudo plymouth message --text="Mounting root filesystem..."; \
+	sleep 2; \
+	sudo plymouth message --text="Loading LeiOS desktop..."; \
+	sleep 3; \
+	sudo plymouth --quit; \
+	wait $$PPID 2>/dev/null || true; \
+	echo ""; \
+	echo "Test complete. Theme files cleaned up."
