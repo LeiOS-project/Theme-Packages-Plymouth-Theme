@@ -1,0 +1,19 @@
+/locale-check
+/debian/tmp
+/debian/files
+# /debian/changelog
+/debian/debhelper-build-stamp
+/debian/.debhelper
+/debian/*.build
+/debian/*.changes
+/debian/*.log
+/debian/*.substvars
+
+/debian/leios.*
+
+/deb-build
+/public
+
+leios.theme.plymouth-theme_*.dsc
+leios.theme.plymouth-theme_*.tar.xz
+leios.theme.plymouth-theme_*.tar.gz

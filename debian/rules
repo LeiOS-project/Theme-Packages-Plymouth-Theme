@@ -1,0 +1,21 @@
+#!/usr/bin/make -f
+
+export DH_VERBOSE = 1
+
+%:
+	dh $@
+
+# Use only the safe 'clean' target during debhelper's clean phase.
+# 'distclean' would also remove the build output directory that we need
+# to keep while the package is being assembled.
+override_dh_auto_clean:
+	$(MAKE) clean
+
+override_dh_auto_test:
+
+override_dh_auto_install:
+	rm -rf debian/leios.theme.plymouth-theme/usr/share/grub/themes/leios-theme
+	mkdir -p debian/leios.theme.plymouth-theme/usr/share/grub/themes
+	cp -a src debian/leios.theme.plymouth-theme/usr/share/grub/themes/leios-theme
+
+override_dh_auto_build:

@@ -1,0 +1,55 @@
+#!/bin/sh
+# postrm for leios.theme.plymouth-theme
+# Deactivates the LeiOS GRUB2 theme and rebuilds the GRUB configuration.
+
+set -e
+
+THEME_FILE="/usr/share/grub/themes/leios-theme/theme.txt"
+BACKGROUND_FILE="/usr/share/grub/themes/leios-theme/background.jpg"
+GRUB_DEFAULT="/etc/default/grub"
+
+grub_update() {
+    if [ -x /usr/sbin/update-grub ]; then
+        /usr/sbin/update-grub || true
+    elif command -v update-grub >/dev/null 2>&1; then
+        update-grub || true
+    fi
+}
+
+deactivate_theme() {
+    if [ ! -f "${GRUB_DEFAULT}" ]; then
+        return 0
+    fi
+
+    # Remove the LeiOS theme line and any trailing blank lines it may have left.
+    sed -i '\|^[[:space:]]*GRUB_THEME="'"${THEME_FILE}"'"|d' "${GRUB_DEFAULT}"
+
+    # Remove the LeiOS background override.
+    sed -i '\|^[[:space:]]*GRUB_BACKGROUND="'"${BACKGROUND_FILE}"'"|d' "${GRUB_DEFAULT}"
+
+    # Remove our comment marker if it is now orphaned.
+    sed -i '/^[[:space:]]*# LeiOS GRUB theme$/d' "${GRUB_DEFAULT}"
+
+    # Remove empty trailing lines to keep the file tidy.
+    sed -i -e :a -e '/^\n*$/{$d;N;};/\n$/ba' "${GRUB_DEFAULT}" || true
+
+    grub_update
+}
+
+case "$1" in
+    remove|purge|disappear)
+        deactivate_theme
+    ;;
+
+    upgrade|failed-upgrade|abort-install|abort-upgrade)
+    ;;
+
+    *)
+        echo "postrm called with unknown argument \`$1'" >&2
+        exit 1
+    ;;
+esac
+
+#DEBHELPER#
+
+exit 0

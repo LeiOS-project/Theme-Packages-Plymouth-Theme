@@ -1,0 +1,65 @@
+#!/bin/sh
+# postinst for leios.theme.plymouth-theme
+# Activates the LeiOS GRUB2 theme and rebuilds the GRUB configuration.
+
+set -e
+
+THEME_FILE="/usr/share/grub/themes/leios-theme/theme.txt"
+BACKGROUND_FILE="/usr/share/grub/themes/leios-theme/background.jpg"
+GRUB_DEFAULT="/etc/default/grub"
+
+grub_update() {
+    if [ -x /usr/sbin/update-grub ]; then
+        /usr/sbin/update-grub || true
+    elif command -v update-grub >/dev/null 2>&1; then
+        update-grub || true
+    else
+        echo "WARNING: update-grub not found; please run it manually to activate the theme" >&2
+    fi
+}
+
+activate_theme() {
+    if [ ! -f "${GRUB_DEFAULT}" ]; then
+        echo "WARNING: ${GRUB_DEFAULT} not found, skipping GRUB configuration" >&2
+        return 0
+    fi
+
+    # Remove any existing GRUB_THEME line to avoid duplicates.
+    sed -i '/^[[:space:]]*GRUB_THEME=/d' "${GRUB_DEFAULT}"
+
+    # Remove any existing GRUB_BACKGROUND line to avoid duplicates.
+    sed -i '/^[[:space:]]*GRUB_BACKGROUND=/d' "${GRUB_DEFAULT}"
+
+    # Activate the LeiOS theme.
+    printf '\n# LeiOS GRUB theme\nGRUB_THEME="%s"\n' "${THEME_FILE}" >> "${GRUB_DEFAULT}"
+
+    # Override the distribution background image with the LeiOS background so
+    # there is no visible flash when GRUB hands off to Plymouth.
+    printf 'GRUB_BACKGROUND="%s"\n' "${BACKGROUND_FILE}" >> "${GRUB_DEFAULT}"
+
+    # Set a reasonable graphics mode if none is configured.
+    if ! grep -q '^[[:space:]]*GRUB_GFXMODE=' "${GRUB_DEFAULT}"; then
+        printf 'GRUB_GFXMODE="1920x1080,auto"\n' >> "${GRUB_DEFAULT}"
+        # printf 'GRUB_GFXMODE="auto"\n' >> "${GRUB_DEFAULT}"
+    fi
+
+    grub_update
+}
+
+case "$1" in
+    configure|triggered)
+        activate_theme
+    ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+    ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+    ;;
+esac
+
+#DEBHELPER#
+
+exit 0
