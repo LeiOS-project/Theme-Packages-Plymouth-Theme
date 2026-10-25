@@ -2,20 +2,29 @@ Source: leios.theme.plymouth-theme
 Section: boot
 Priority: optional
 Maintainer: LeiOS Project Team <support@leios.dev>
-Build-Depends: debhelper-compat (= 13)
+Build-Depends: debhelper-compat (= 13),
+               libevdev-dev,
+               libplymouth-dev (>= 24.004),
+               libudev-dev,
+               libxkbcommon-dev,
+               pkgconf,
+               xkb-data
 Standards-Version: 4.6.2
 Homepage: https://git.leicraftmc.de/LeiOS/Theme-Packages/Plymouth-Theme
 Rules-Requires-Root: no
 
 Package: leios.theme.plymouth-theme
-Architecture: all
-Depends: ${misc:Depends}, plymouth
-Recommends: initramfs-tools
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}, plymouth (>= 24.004), plymouth-label
+Recommends: initramfs-tools, leios.theme.fonts
 Description: LeiOS Plymouth boot theme
- This package provides the LeiOS theme for the Plymouth boot splash.
+ This package provides the LeiOS theme for the Plymouth boot splash: the
+ LeiOS wallpaper and logo, with the boot messages in a rounded translucent
+ box below the logo, the same messages a boot without the splash shows
+ (kernel messages and systemd status lines, in their colours). Password and
+ question prompts, for example for encrypted disks, get a box of their own.
  .
- It includes the theme description, background image, logo and a blurred
- bottom panel for readable startup logs.
+ The theme comes with its own Plymouth plugin (leios.so), which draws it.
  .
  The theme is made the distribution default by shipping a LeiOS
  /usr/share/plymouth/plymouthd.defaults (Debian's is diverted), so a theme

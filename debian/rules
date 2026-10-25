@@ -1,6 +1,17 @@
 #!/usr/bin/make -f
 
 export DH_VERBOSE = 1
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+include /usr/share/dpkg/buildtools.mk
+include /usr/share/dpkg/buildflags.mk
+
+PKG_CONFIG ?= pkg-config
+PLYMOUTH_CFLAGS = $(shell $(PKG_CONFIG) --cflags ply-splash-graphics)
+PLYMOUTH_LIBS = $(shell $(PKG_CONFIG) --libs ply-splash-graphics)
+PLYMOUTH_PLUGIN_DIR = $(shell $(PKG_CONFIG) --variable=pluginsdir ply-splash-core)
+
+PKG_DIR := debian/leios.theme.plymouth-theme
 
 %:
 	dh $@
@@ -10,14 +21,18 @@ export DH_VERBOSE = 1
 # to keep while the package is being assembled.
 override_dh_auto_clean:
 	$(MAKE) clean
+	rm -f plugin/leios.so
 
 override_dh_auto_test:
 
-override_dh_auto_install:
-	rm -rf debian/leios.theme.plymouth-theme/usr/share/plymouth/themes/leios
-	mkdir -p debian/leios.theme.plymouth-theme/usr/share/plymouth/themes
-	cp -a src debian/leios.theme.plymouth-theme/usr/share/plymouth/themes/leios
-	# Replaces Debian's distribution defaults, which preinst diverts.
-	install -D -m 0644 defaults/plymouthd.defaults debian/leios.theme.plymouth-theme/usr/share/plymouth/plymouthd.defaults
-
 override_dh_auto_build:
+	$(CC) $(CPPFLAGS) $(CFLAGS) -std=gnu11 -Wall -Wextra -Wno-unused-parameter -fPIC -shared \
+		-o plugin/leios.so plugin/plugin.c $(PLYMOUTH_CFLAGS) $(LDFLAGS) $(PLYMOUTH_LIBS) -lm
+
+override_dh_auto_install:
+	rm -rf $(PKG_DIR)/usr/share/plymouth/themes/leios
+	mkdir -p $(PKG_DIR)/usr/share/plymouth/themes
+	cp -a src $(PKG_DIR)/usr/share/plymouth/themes/leios
+	install -D -m 0644 plugin/leios.so $(PKG_DIR)$(PLYMOUTH_PLUGIN_DIR)leios.so
+	# Replaces Debian's distribution defaults, which preinst diverts.
+	install -D -m 0644 defaults/plymouthd.defaults $(PKG_DIR)/usr/share/plymouth/plymouthd.defaults

@@ -1,8 +1,23 @@
 [Plymouth Theme]
 Name=LeiOS
-Description=LeiOS Plymouth boot theme
-ModuleName=script
+Description=LeiOS boot splash: the LeiOS wallpaper and logo with the boot messages below
+ModuleName=leios
 
-[script]
+[leios]
 ImageDir=/usr/share/plymouth/themes/leios
-ScriptFile=/usr/share/plymouth/themes/leios/leios.script
+# Logo height and the height of its centre, as fractions of the screen height
+LogoSize=0.11
+LogoVerticalPosition=0.40
+# Box with the boot messages below the logo: lines shown, width as a
+# fraction of the screen width, colour (0xRRGGBB) and opacity
+MessageLines=8
+MessageBoxWidth=0.56
+MessageBoxColor=0x0d1526
+MessageBoxOpacity=0.55
+# Fonts (Pango families without size), the size on a 1080 pixel high screen
+# and the text colour (0xRRGGBBAA). The initramfs only contains the default
+# sans-serif and monospace fonts, which LeiOS sets to Geist and Geist Mono.
+Font=Geist, sans-serif
+MonospaceFont=Geist Mono, monospace
+FontSize=11
+TextColor=0xe8eef7ff

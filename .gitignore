@@ -17,3 +17,4 @@
 leios.theme.plymouth-theme_*.dsc
 leios.theme.plymouth-theme_*.tar.xz
 leios.theme.plymouth-theme_*.tar.gz
+/plugin/leios.so

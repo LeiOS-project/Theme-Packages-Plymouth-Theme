@@ -7,6 +7,15 @@ leios.theme.plymouth-theme (1.1.0) unstable; urgency=medium
   * On upgrade, restore Debian's theme in the diverted file and remove
     /var/lib/leios.theme.plymouth-theme.
   * Rebuild the initramfs through the update-initramfs trigger.
+  * Draw the theme with a Plymouth plugin of its own (leios.so) instead of a
+    script: script themes cannot show console output. The box below the
+    logo now shows the boot messages a boot without the splash shows
+    (kernel messages and systemd status lines, in their colours); before,
+    it stayed empty. The package is now architecture-specific.
+  * Make the boot message box a rounded translucent box below the logo.
+  * Show password and question prompts (e.g. for encrypted disks) in a box
+    of their own, and the progress of offline updates below the logo.
+  * Make the logo smaller and round its corners like the desktop's.
 
  -- Linus Fischer <leicraft@leicraftmc.de>  Sun, 25 Oct 2026 12:00:00 +0100
 
