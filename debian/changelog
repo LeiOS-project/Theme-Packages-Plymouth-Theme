@@ -1,3 +1,15 @@
+leios.theme.plymouth-theme (1.1.0) unstable; urgency=medium
+
+  * Make LeiOS the default theme by shipping our own plymouthd.defaults,
+    diverting Debian's to /usr/share/plymouth/plymouthd.defaults.distrib,
+    instead of editing the file owned by the plymouth package. Theme= in
+    /etc/plymouth/plymouthd.conf still takes precedence.
+  * On upgrade, restore Debian's theme in the diverted file and remove
+    /var/lib/leios.theme.plymouth-theme.
+  * Rebuild the initramfs through the update-initramfs trigger.
+
+ -- Linus Fischer <leicraft@leicraftmc.de>  Sun, 25 Oct 2026 12:00:00 +0100
+
 leios.theme.plymouth-theme (1.0.0) unstable; urgency=medium
 
   * Initial release.

@@ -1,36 +1,30 @@
 #!/bin/sh
 # postrm for leios.theme.plymouth-theme
-# Restores the previous Plymouth default theme and rebuilds the initramfs.
+# Puts Debian's plymouthd.defaults back once this package's copy is gone. The
+# initramfs is rebuilt through the update-initramfs trigger (debian/triggers).
 
 set -e
 
-THEME="leios"
 DEFAULTS="/usr/share/plymouth/plymouthd.defaults"
-STATE_DIR="/var/lib/leios.theme.plymouth-theme"
-PREVIOUS_THEME_FILE="${STATE_DIR}/previous-theme"
 
-restore_previous_theme() {
-    if [ -f "${DEFAULTS}" ] && [ -f "${PREVIOUS_THEME_FILE}" ]; then
-        PREVIOUS=$(cat "${PREVIOUS_THEME_FILE}")
-        sed -i 's/^[[:space:]]*Theme=.*/Theme='"${PREVIOUS}"'/' "${DEFAULTS}"
-    fi
-    rm -f "${PREVIOUS_THEME_FILE}"
-    rmdir "${STATE_DIR}" 2>/dev/null || true
-}
-
-rebuild_initramfs() {
-    if [ -x /usr/sbin/update-initramfs ]; then
-        update-initramfs -u || true
-    fi
+remove_diversion() {
+    dpkg-divert --package leios.theme.plymouth-theme --remove --rename --quiet \
+        --divert "${DEFAULTS}.distrib" "${DEFAULTS}"
 }
 
 case "$1" in
-    remove|purge|disappear)
-        restore_previous_theme
-        rebuild_initramfs
+    remove|abort-install|disappear)
+        remove_diversion
     ;;
 
-    upgrade|failed-upgrade|abort-install|abort-upgrade)
+    abort-upgrade)
+        # The version being upgraded from did not divert the file.
+        if dpkg --compare-versions "$2" lt 1.1.0~; then
+            remove_diversion
+        fi
+    ;;
+
+    purge|upgrade|failed-upgrade)
     ;;
 
     *)

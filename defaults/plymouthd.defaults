@@ -1,0 +1,11 @@
+# Distribution defaults. Changes to this file will get overwritten during
+# upgrades.
+#
+# LeiOS version, installed by leios.theme.plymouth-theme in place of Debian's
+# (kept as /usr/share/plymouth/plymouthd.defaults.distrib). To use another
+# theme, set Theme= in /etc/plymouth/plymouthd.conf, e.g. with
+# "plymouth-set-default-theme -R <theme>"; it takes precedence over this file.
+[Daemon]
+Theme=leios
+ShowDelay=0
+DeviceTimeout=8

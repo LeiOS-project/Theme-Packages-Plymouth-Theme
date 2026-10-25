@@ -1,43 +1,36 @@
 #!/bin/sh
 # postinst for leios.theme.plymouth-theme
-# Sets LeiOS as the default Plymouth theme and rebuilds the initramfs.
+#
+# LeiOS is the default theme through the plymouthd.defaults shipped by this
+# package (see preinst), so nothing in /etc is changed and Theme= in
+# /etc/plymouth/plymouthd.conf keeps taking precedence. The initramfs is
+# rebuilt through the update-initramfs trigger (debian/triggers).
 
 set -e
 
-THEME="leios"
-DEFAULTS="/usr/share/plymouth/plymouthd.defaults"
+DISTRIB_DEFAULTS="/usr/share/plymouth/plymouthd.defaults.distrib"
 STATE_DIR="/var/lib/leios.theme.plymouth-theme"
 PREVIOUS_THEME_FILE="${STATE_DIR}/previous-theme"
 
-save_previous_theme() {
-    if [ ! -f "${PREVIOUS_THEME_FILE}" ]; then
-        mkdir -p "${STATE_DIR}"
-        CURRENT=$(sed -n 's/^[[:space:]]*Theme=\(.*\)/\1/p' "${DEFAULTS}" | head -1)
-        echo "${CURRENT:-ceratopsian}" > "${PREVIOUS_THEME_FILE}"
+# Versions before 1.1.0 set Theme=leios in Debian's plymouthd.defaults and
+# saved the previous theme in STATE_DIR. preinst has moved that edited file
+# aside, so put Debian's theme back into it and drop the saved state.
+restore_distrib_defaults() {
+    if [ -f "${PREVIOUS_THEME_FILE}" ] && [ -f "${DISTRIB_DEFAULTS}" ]; then
+        PREVIOUS=$(cat "${PREVIOUS_THEME_FILE}")
+        if [ -n "${PREVIOUS}" ]; then
+            sed -i 's/^[[:space:]]*Theme=leios[[:space:]]*$/Theme='"${PREVIOUS}"'/' "${DISTRIB_DEFAULTS}"
+        fi
     fi
-}
-
-set_default_theme() {
-    if [ -f "${DEFAULTS}" ]; then
-        save_previous_theme
-        sed -i 's/^[[:space:]]*Theme=.*/Theme='"${THEME}"'/' "${DEFAULTS}"
-    else
-        echo "WARNING: ${DEFAULTS} not found, cannot set default Plymouth theme" >&2
-    fi
-}
-
-rebuild_initramfs() {
-    if [ -x /usr/sbin/update-initramfs ]; then
-        update-initramfs -u || true
-    else
-        echo "WARNING: update-initramfs not found; please rebuild the initramfs manually" >&2
-    fi
+    rm -f "${PREVIOUS_THEME_FILE}"
+    rmdir "${STATE_DIR}" 2>/dev/null || true
 }
 
 case "$1" in
-    configure|triggered)
-        set_default_theme
-        rebuild_initramfs
+    configure)
+        if [ -n "$2" ] && dpkg --compare-versions "$2" lt 1.1.0~; then
+            restore_distrib_defaults
+        fi
     ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)

@@ -15,6 +15,8 @@ Description: LeiOS Plymouth boot theme
  This package provides the LeiOS theme for the Plymouth boot splash.
  .
  It includes the theme description, background image, logo and a blurred
- bottom panel for readable startup logs. On installation the theme is set
- as the Plymouth default in /usr/share/plymouth/plymouthd.defaults and the
- initramfs is rebuilt.
+ bottom panel for readable startup logs.
+ .
+ The theme is made the distribution default by shipping a LeiOS
+ /usr/share/plymouth/plymouthd.defaults (Debian's is diverted), so a theme
+ set in /etc/plymouth/plymouthd.conf still takes precedence.

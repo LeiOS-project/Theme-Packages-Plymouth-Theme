@@ -1,0 +1,28 @@
+#!/bin/sh
+# preinst for leios.theme.plymouth-theme
+# Diverts Debian's /usr/share/plymouth/plymouthd.defaults so this package can
+# ship the LeiOS distribution defaults in its place. Settings in
+# /etc/plymouth/plymouthd.conf still take precedence over that file.
+
+set -e
+
+DEFAULTS="/usr/share/plymouth/plymouthd.defaults"
+
+case "$1" in
+    install|upgrade)
+        dpkg-divert --package leios.theme.plymouth-theme --add --rename --quiet \
+            --divert "${DEFAULTS}.distrib" "${DEFAULTS}"
+    ;;
+
+    abort-upgrade)
+    ;;
+
+    *)
+        echo "preinst called with unknown argument \`$1'" >&2
+        exit 1
+    ;;
+esac
+
+#DEBHELPER#
+
+exit 0

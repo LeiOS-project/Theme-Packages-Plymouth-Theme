@@ -17,5 +17,7 @@ override_dh_auto_install:
 	rm -rf debian/leios.theme.plymouth-theme/usr/share/plymouth/themes/leios
 	mkdir -p debian/leios.theme.plymouth-theme/usr/share/plymouth/themes
 	cp -a src debian/leios.theme.plymouth-theme/usr/share/plymouth/themes/leios
+	# Replaces Debian's distribution defaults, which preinst diverts.
+	install -D -m 0644 defaults/plymouthd.defaults debian/leios.theme.plymouth-theme/usr/share/plymouth/plymouthd.defaults
 
 override_dh_auto_build:
