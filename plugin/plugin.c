@@ -1,10 +1,11 @@
 /* LeiOS boot splash plugin for Plymouth
  *
- * Draws the LeiOS wallpaper with the logo in the middle and, below it, a
- * rounded translucent box with the boot messages: the console output Plymouth
- * collects (kernel messages at the console log level and the status lines
- * systemd prints while Plymouth runs), i.e. what a boot without the splash
- * shows. Password and question prompts get a box of their own.
+ * Draws the LeiOS wallpaper with the logo at the top and, below it, a rounded
+ * translucent box over most of the screen with the boot messages: the console
+ * output Plymouth collects (kernel messages at the console log level and the
+ * status lines systemd prints while Plymouth runs), i.e. what a boot without
+ * the splash shows, with long lines wrapped like on the console. Password and
+ * question prompts get a box of their own below it.
  *
  * Plymouth's text labels paint rich text (the colours of the console) on a
  * black background, made for its full screen console. To put the lines on
@@ -47,8 +48,9 @@
 #include "ply-utils.h"
 
 #define UPDATE_INTERVAL (1.0 / 30)
-/* Columns the terminal emulator keeps per line; each view cuts lines to the
- * width of its box. */
+/* Lines and columns the terminal emulator keeps; each view wraps lines to the
+ * width of its box and shows as many of the last ones as fit. */
+#define TERMINAL_ROWS 256
 #define TERMINAL_COLUMNS 256
 #define MAX_BULLETS 64
 /* Font sizes in the theme file are for a 1080 pixel high screen. */
@@ -73,9 +75,15 @@ typedef struct
         ply_image_t              *logo;
         ply_rectangle_t           logo_area;
 
-        /* Box with the boot messages */
+        /* Box with the boot messages: the full height, and the shorter one
+         * shown above a prompt box. Each of its rows is a label drawn into a
+         * buffer of its own. */
         ply_pixel_buffer_t       *log_box;
+        ply_pixel_buffer_t       *log_box_short;
         ply_rectangle_t           log_box_area;
+        long                      log_box_short_height;
+        size_t                    rows;
+        size_t                    rows_short;
         ply_label_t             **log_labels;
         ply_pixel_buffer_t      **log_line_buffers;
         long                      text_width;
@@ -111,8 +119,8 @@ struct _ply_boot_splash_plugin
         /* Settings from the theme file */
         double                         logo_size;
         double                         logo_position;
-        size_t                         log_lines;
         double                         box_width;
+        double                         box_bottom;
         uint32_t                       box_color;
         double                         box_opacity;
         char                          *font;
@@ -288,11 +296,6 @@ view_new (ply_boot_splash_plugin_t *plugin,
         view->plugin = plugin;
         view->display = display;
 
-        view->log_labels = calloc (plugin->log_lines, sizeof(ply_label_t *));
-        view->log_line_buffers = calloc (plugin->log_lines, sizeof(ply_pixel_buffer_t *));
-        for (size_t i = 0; i < plugin->log_lines; i++)
-                view->log_labels[i] = ply_label_new ();
-
         view->prompt_label = ply_label_new ();
         view->entry_label = ply_label_new ();
         view->status_label = ply_label_new ();
@@ -300,20 +303,19 @@ view_new (ply_boot_splash_plugin_t *plugin,
         return view;
 }
 
+/* Frees what view_load () created */
 static void
-view_free (view_t *view)
+view_unload (view_t *view)
 {
-        for (size_t i = 0; i < view->plugin->log_lines; i++) {
+        for (size_t i = 0; i < view->rows; i++) {
                 ply_label_free (view->log_labels[i]);
-                if (view->log_line_buffers[i] != NULL)
-                        ply_pixel_buffer_free (view->log_line_buffers[i]);
+                ply_pixel_buffer_free (view->log_line_buffers[i]);
         }
         free (view->log_labels);
         free (view->log_line_buffers);
-
-        ply_label_free (view->prompt_label);
-        ply_label_free (view->entry_label);
-        ply_label_free (view->status_label);
+        view->log_labels = NULL;
+        view->log_line_buffers = NULL;
+        view->rows = 0;
 
         if (view->background != NULL)
                 ply_pixel_buffer_free (view->background);
@@ -321,12 +323,42 @@ view_free (view_t *view)
                 ply_image_free (view->logo);
         if (view->log_box != NULL)
                 ply_pixel_buffer_free (view->log_box);
+        if (view->log_box_short != NULL)
+                ply_pixel_buffer_free (view->log_box_short);
         if (view->prompt_box != NULL)
                 ply_pixel_buffer_free (view->prompt_box);
+        view->background = NULL;
+        view->logo = NULL;
+        view->log_box = NULL;
+        view->log_box_short = NULL;
+        view->prompt_box = NULL;
 
         free (view->font);
         free (view->monospace_font);
+        view->font = NULL;
+        view->monospace_font = NULL;
+}
+
+static void
+view_free (view_t *view)
+{
+        view_unload (view);
+
+        ply_label_free (view->prompt_label);
+        ply_label_free (view->entry_label);
+        ply_label_free (view->status_label);
+
         free (view);
+}
+
+/* Rows of messages shown now: fewer while a prompt box is below them */
+static size_t
+view_get_visible_rows (view_t *view)
+{
+        if (view->plugin->state != PLY_BOOT_SPLASH_DISPLAY_NORMAL)
+                return view->rows_short;
+
+        return view->rows;
 }
 
 static void
@@ -373,37 +405,70 @@ render_log_line (view_t *view,
         }
 }
 
+/* Rows a message line takes in the box: long lines wrap like on the console */
+static size_t
+get_line_rows (ply_rich_text_t *line,
+               size_t           line_characters)
+{
+        size_t length = ply_rich_text_get_length (line);
+
+        return length == 0 ? 1 : (length + line_characters - 1) / line_characters;
+}
+
+/* Fills the visible rows from the top with the last messages, like a
+ * terminal; the rows below the last message stay empty. */
 static void
 view_update_log (view_t *view)
 {
         ply_boot_splash_plugin_t *plugin = view->plugin;
-        int first, last;
+        size_t visible = view_get_visible_rows (view);
+        size_t rows_needed = 0, skip_rows = 0, row = 0;
+        int first, last, oldest;
 
+        /* Walk back from the last message until the visible rows are full,
+         * at most as far back as the emulator keeps lines. */
         last = get_last_log_line (plugin);
-        first = MAX (0, last - (int) plugin->log_lines + 1);
+        oldest = MAX (0, last - (TERMINAL_ROWS - 2));
+        first = last + 1;
+        while (first > oldest && rows_needed < visible) {
+                first--;
+                rows_needed += get_line_rows (ply_terminal_emulator_get_nth_line (plugin->terminal, first),
+                                              view->line_characters);
+        }
+        /* The top line may not fit completely: show only its end */
+        if (rows_needed > visible)
+                skip_rows = rows_needed - visible;
 
-        for (size_t i = 0; i < plugin->log_lines; i++) {
-                int line_number = first + (int) i;
-                ply_rich_text_t *line;
-                ply_rich_text_span_t span;
+        for (int line_number = first; line_number <= last && row < visible; line_number++) {
+                ply_rich_text_t *line = ply_terminal_emulator_get_nth_line (plugin->terminal, line_number);
+                size_t length = ply_rich_text_get_length (line);
+                size_t line_rows = get_line_rows (line, view->line_characters);
 
-                if (line_number > last) {
-                        ply_label_set_text (view->log_labels[i], "");
-                } else {
-                        line = ply_terminal_emulator_get_nth_line (plugin->terminal, line_number);
-                        ply_rich_text_take_reference (line);
-                        span.offset = 0;
-                        span.range = MIN (ply_rich_text_get_length (line), view->line_characters);
-                        ply_label_set_rich_text (view->log_labels[i], line, &span);
-                        ply_rich_text_drop_reference (line);
+                ply_rich_text_take_reference (line);
+                for (size_t part = line_number == first ? skip_rows : 0; part < line_rows && row < visible; part++) {
+                        ply_rich_text_span_t span;
+
+                        if (length == 0) {
+                                ply_label_set_text (view->log_labels[row], "");
+                        } else {
+                                span.offset = part * view->line_characters;
+                                span.range = MIN (view->line_characters, length - span.offset);
+                                ply_label_set_rich_text (view->log_labels[row], line, &span);
+                        }
+                        render_log_line (view, row);
+                        row++;
                 }
+                ply_rich_text_drop_reference (line);
+        }
 
-                render_log_line (view, i);
+        for (; row < view->rows; row++) {
+                ply_label_set_text (view->log_labels[row], "");
+                render_log_line (view, row);
         }
 }
 
-/* The prompt box goes below the message box, or in its place while there
- * are no messages. */
+/* The prompt box goes below the (then shorter) message box, or in its place
+ * while there are no messages. */
 static void
 view_place_prompt (view_t *view)
 {
@@ -413,7 +478,7 @@ view_place_prompt (view_t *view)
         view->prompt_box_area.x = view->log_box_area.x;
         view->prompt_box_area.y = view->log_box_area.y;
         if (plugin->show_log && plugin->log_has_text)
-                view->prompt_box_area.y += view->log_box_area.height + view->gap / 2;
+                view->prompt_box_area.y += view->log_box_short_height + view->gap / 2;
 
         x = view->prompt_box_area.x + view->padding;
         y = view->prompt_box_area.y + view->padding;
@@ -445,9 +510,11 @@ view_load (view_t *view)
         ply_boot_splash_plugin_t *plugin = view->plugin;
         unsigned long screen_width, screen_height;
         double scale, font_size;
-        long logo_size, box_width, box_height, radius;
+        long logo_size, box_width, box_height, box_bottom, prompt_height, radius;
         long character_width = 0;
         ply_label_t *measure;
+
+        view_unload (view);
 
         screen_width = ply_pixel_display_get_width (view->display);
         screen_height = ply_pixel_display_get_height (view->display);
@@ -511,20 +578,37 @@ view_load (view_t *view)
         view->gap = lround (screen_height * 0.035);
         radius = view->line_height;
 
-        /* Message box below the logo */
+        /* Message box: from below the logo down to MessageBoxBottom, with as
+         * many whole rows as fit there */
         box_width = MIN (lround (screen_width * plugin->box_width), (long) screen_width - 2 * view->gap);
-        box_height = (long) plugin->log_lines * view->line_height + 2 * view->padding;
+        box_bottom = lround (screen_height * plugin->box_bottom);
+        prompt_height = view->line_height * 5 / 2 + 2 * view->padding;
         view->text_width = box_width - 2 * view->padding;
         view->line_characters = MAX (1, view->text_width / character_width);
-        view->log_box_area.width = box_width;
-        view->log_box_area.height = box_height;
         view->log_box_area.x = ((long) screen_width - box_width) / 2;
         view->log_box_area.y = view->logo_area.y + view->logo_area.height + view->gap;
+        view->rows = (size_t) CLAMP ((box_bottom - view->log_box_area.y - 2 * view->padding) / view->line_height,
+                                     1, TERMINAL_ROWS - 2);
+        box_height = (long) view->rows * view->line_height + 2 * view->padding;
+        view->log_box_area.width = box_width;
+        view->log_box_area.height = box_height;
         view->log_box = create_rounded_box (box_width, box_height, radius,
                                             plugin->box_color, plugin->box_opacity);
 
-        /* The labels are only drawn into their line buffers, at (0, 0) */
-        for (size_t i = 0; i < plugin->log_lines; i++) {
+        /* The shorter box above a prompt box, which then ends about where the
+         * full message box does */
+        view->rows_short = (size_t) CLAMP ((box_height - prompt_height - view->gap / 2 - 2 * view->padding) /
+                                           view->line_height,
+                                           1, (long) view->rows);
+        view->log_box_short_height = (long) view->rows_short * view->line_height + 2 * view->padding;
+        view->log_box_short = create_rounded_box (box_width, view->log_box_short_height, radius,
+                                                  plugin->box_color, plugin->box_opacity);
+
+        /* The labels are only drawn into their row buffers, at (0, 0) */
+        view->log_labels = calloc (view->rows, sizeof(ply_label_t *));
+        view->log_line_buffers = calloc (view->rows, sizeof(ply_pixel_buffer_t *));
+        for (size_t i = 0; i < view->rows; i++) {
+                view->log_labels[i] = ply_label_new ();
                 view->log_line_buffers[i] = ply_pixel_buffer_new (view->text_width, view->line_height);
                 ply_pixel_buffer_set_opaque (view->log_line_buffers[i], false);
                 ply_label_set_font (view->log_labels[i], view->monospace_font);
@@ -534,7 +618,7 @@ view_load (view_t *view)
 
         /* Prompt box: the prompt and the entry below it */
         view->prompt_box_area.width = box_width;
-        view->prompt_box_area.height = view->line_height * 5 / 2 + 2 * view->padding;
+        view->prompt_box_area.height = prompt_height;
         view->prompt_box = create_rounded_box (box_width, view->prompt_box_area.height, radius,
                                                plugin->box_color, plugin->box_opacity);
         ply_label_set_font (view->prompt_label, view->font);
@@ -632,9 +716,11 @@ on_draw (void                *user_data,
                 ply_label_draw_area (view->status_label, pixel_buffer, x, y, width, height);
 
         if (plugin->show_log && plugin->log_has_text && view->log_box != NULL) {
-                ply_pixel_buffer_fill_with_buffer (pixel_buffer, view->log_box,
+                bool short_box = plugin->state != PLY_BOOT_SPLASH_DISPLAY_NORMAL;
+
+                ply_pixel_buffer_fill_with_buffer (pixel_buffer, short_box ? view->log_box_short : view->log_box,
                                                    view->log_box_area.x, view->log_box_area.y);
-                for (size_t i = 0; i < plugin->log_lines; i++)
+                for (size_t i = 0; i < view_get_visible_rows (view); i++)
                         ply_pixel_buffer_fill_with_buffer (pixel_buffer, view->log_line_buffers[i],
                                                            view->log_box_area.x + view->padding,
                                                            view->log_box_area.y + view->padding +
@@ -763,6 +849,20 @@ hide_prompt (ply_boot_splash_plugin_t *plugin)
         }
 }
 
+/* Refills the message rows after the number of visible ones changed */
+static void
+refill_log_rows (ply_boot_splash_plugin_t *plugin)
+{
+        ply_list_node_t *node;
+
+        if (!plugin->show_log)
+                return;
+
+        ply_list_foreach (plugin->views, node) {
+                view_update_log (ply_list_node_get_data (node));
+        }
+}
+
 static void
 set_prompt (ply_boot_splash_plugin_t      *plugin,
             ply_boot_splash_display_type_t state,
@@ -770,7 +870,11 @@ set_prompt (ply_boot_splash_plugin_t      *plugin,
             const char                    *entry_text,
             int                            bullets)
 {
+        bool was_normal = plugin->state == PLY_BOOT_SPLASH_DISPLAY_NORMAL;
+
         plugin->state = state;
+        if (was_normal)
+                refill_log_rows (plugin);
         free (plugin->prompt);
         plugin->prompt = prompt != NULL ? strdup (prompt) : NULL;
         free (plugin->entry_text);
@@ -788,6 +892,7 @@ display_normal (ply_boot_splash_plugin_t *plugin)
 
         plugin->state = PLY_BOOT_SPLASH_DISPLAY_NORMAL;
         hide_prompt (plugin);
+        refill_log_rows (plugin);
         redraw_views (plugin);
 }
 
@@ -860,12 +965,13 @@ create_plugin (ply_key_file_t *key_file)
         plugin->image_dir = key_file_get_string (key_file, "ImageDir", "/usr/share/plymouth/themes/leios");
 
         /* Logo height and the height of its centre, as fractions of the screen height */
-        plugin->logo_size = ply_key_file_get_double (key_file, "leios", "LogoSize", 0.11);
-        plugin->logo_position = ply_key_file_get_double (key_file, "leios", "LogoVerticalPosition", 0.40);
-        /* Message box: number of lines, width as a fraction of the screen width,
-         * background colour (0xRRGGBB) and its opacity */
-        plugin->log_lines = (size_t) CLAMP (ply_key_file_get_long (key_file, "leios", "MessageLines", 8), 1, 40);
-        plugin->box_width = ply_key_file_get_double (key_file, "leios", "MessageBoxWidth", 0.56);
+        plugin->logo_size = ply_key_file_get_double (key_file, "leios", "LogoSize", 0.08);
+        plugin->logo_position = ply_key_file_get_double (key_file, "leios", "LogoVerticalPosition", 0.10);
+        /* Message box below the logo: its width as a fraction of the screen
+         * width, where it ends as a fraction of the screen height, background
+         * colour (0xRRGGBB) and its opacity */
+        plugin->box_width = ply_key_file_get_double (key_file, "leios", "MessageBoxWidth", 0.80);
+        plugin->box_bottom = ply_key_file_get_double (key_file, "leios", "MessageBoxBottom", 0.95);
         plugin->box_color = key_file_get_color (key_file, "MessageBoxColor", 0x0d1526);
         plugin->box_opacity = CLAMP (ply_key_file_get_double (key_file, "leios", "MessageBoxOpacity", 0.55), 0.0, 1.0);
         /* Font families (Pango syntax, without the size), the font size for a
@@ -875,8 +981,7 @@ create_plugin (ply_key_file_t *key_file)
         plugin->font_size = ply_key_file_get_double (key_file, "leios", "FontSize", 11.0);
         plugin->text_color = key_file_get_color (key_file, "TextColor", 0xe8eef7ff);
 
-        /* One more row than shown: the last one is the line being written */
-        plugin->terminal = ply_terminal_emulator_new (plugin->log_lines + 1, TERMINAL_COLUMNS);
+        plugin->terminal = ply_terminal_emulator_new (TERMINAL_ROWS, TERMINAL_COLUMNS);
         ply_terminal_emulator_watch_for_output (plugin->terminal, on_terminal_output, plugin);
 
         plugin->views = ply_list_new ();

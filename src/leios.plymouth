@@ -1,17 +1,18 @@
 [Plymouth Theme]
 Name=LeiOS
-Description=LeiOS boot splash: the LeiOS wallpaper and logo with the boot messages below
+Description=LeiOS boot splash: the LeiOS wallpaper with the logo at the top and the boot messages below
 ModuleName=leios
 
 [leios]
 ImageDir=/usr/share/plymouth/themes/leios
 # Logo height and the height of its centre, as fractions of the screen height
-LogoSize=0.11
-LogoVerticalPosition=0.40
-# Box with the boot messages below the logo: lines shown, width as a
-# fraction of the screen width, colour (0xRRGGBB) and opacity
-MessageLines=8
-MessageBoxWidth=0.56
+LogoSize=0.08
+LogoVerticalPosition=0.10
+# Box with the boot messages below the logo: width as a fraction of the
+# screen width, where it ends as a fraction of the screen height (it shows as
+# many lines as fit), colour (0xRRGGBB) and opacity
+MessageBoxWidth=0.80
+MessageBoxBottom=0.95
 MessageBoxColor=0x0d1526
 MessageBoxOpacity=0.55
 # Fonts (Pango families without size), the size on a 1080 pixel high screen
