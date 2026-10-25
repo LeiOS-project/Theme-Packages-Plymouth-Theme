@@ -1,0 +1,34 @@
+
+release:
+  stage: release_and_publish
+  needs: [build-deb]
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends ca-certificates curl
+  script:
+    - |
+      TAG_VERSION="${CI_COMMIT_TAG#v}"
+      echo "Uploading generic package for version $TAG_VERSION"
+      for file in deb-build/*.deb; do
+        filename=$(basename "$file")
+        package=$(dpkg-deb --field "$file" Package)
+        echo "Uploading $filename ..."
+        curl --fail --location --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
+          --upload-file "$file" \
+          "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/${package}/${TAG_VERSION}/${filename}"
+      done
+
+# Creates the release on the LeiOS Hub and uploads the package into its
+# testing repository. Needs the CI/CD variable LEIOS_API_KEY (masked): an API
+# key of a hub user who may publish releases of this package.
+publish:
+  stage: release_and_publish
+  needs: [build-deb]
+  # One publish at a time, so tags pushed together cannot both pass the
+  # "newer than every release" check.
+  resource_group: leios-hub
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends ca-certificates curl dpkg-dev jq
+  script:
+    - bash .gitlab/ci/leios-hub.sh publish deb-build/*.deb

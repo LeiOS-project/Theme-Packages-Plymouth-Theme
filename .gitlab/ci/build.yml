@@ -6,24 +6,16 @@ workflow:
       when: always
     - when: never
 
+# Stops the release before anything is built unless the tag matches the latest
+# debian/changelog entry, and that version is not on the LeiOS Hub yet and
+# newer than every release there.
 validate-tag:
   stage: .pre
   before_script:
     - apt-get update
-    - apt-get install -y --no-install-recommends devscripts
+    - apt-get install -y --no-install-recommends ca-certificates curl dpkg-dev jq
   script:
-    - |
-      # Strip leading 'v' from the tag
-      TAG_VERSION="${CI_COMMIT_TAG#v}"
-      # Read the version from the latest debian/changelog entry
-      CHANGELOG_VERSION="$(dpkg-parsechangelog -S Version)"
-      echo "Tag version:        $TAG_VERSION"
-      echo "Changelog version:  $CHANGELOG_VERSION"
-      if [ "$TAG_VERSION" != "$CHANGELOG_VERSION" ]; then
-        echo "ERROR: Tag version $TAG_VERSION does not match changelog version $CHANGELOG_VERSION"
-        exit 1
-      fi
-      echo "Tag version matches changelog version."
+    - bash .gitlab/ci/leios-hub.sh check
 
 build-deb:
   stage: build
@@ -31,6 +23,8 @@ build-deb:
   before_script:
     - apt-get update
     - apt-get install -y --no-install-recommends build-essential debhelper devscripts
+    # Build-Depends from debian/control
+    - apt-get build-dep -y --no-install-recommends ./
   script:
     - make clean
     - make package
@@ -40,31 +34,3 @@ build-deb:
       - deb-build/*.changes
       - deb-build/*.buildinfo
     expire_in: 1 hour
-
-release:
-  stage: release_and_publish
-  needs: [build-deb]
-  before_script:
-    - apt-get update
-    - apt-get install -y --no-install-recommends curl
-  script:
-    - |
-      TAG_VERSION="${CI_COMMIT_TAG#v}"
-      echo "Uploading generic package for version $TAG_VERSION"
-      for file in deb-build/*.deb; do
-        filename=$(basename "$file")
-        echo "Uploading $filename ..."
-        curl --fail --location --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
-          --upload-file "$file" \
-          "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/leios.theme.plymouth-theme/${TAG_VERSION}/${filename}"
-      done
-
-publish:
-  stage: release_and_publish
-  needs: [build-deb]
-  before_script:
-    - apt-get update
-    - apt-get install -y --no-install-recommends devscripts
-  script:
-    - |
-      TAG_VERSION="${CI_COMMIT_TAG#v}"

@@ -5,5 +5,10 @@ stages:
 variables:
   DEBIAN_FRONTEND: noninteractive
 
+default:
+  # LeiOS is based on Debian 13, so build and check its packages there.
+  image: debian:trixie
+
 include:
   - local: ".gitlab/ci/build.yml"
+  - local: ".gitlab/ci/release.yml"
