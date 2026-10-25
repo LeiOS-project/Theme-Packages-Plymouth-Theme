@@ -5,6 +5,7 @@ Maintainer: LeiOS Project Team <support@leios.dev>
 Build-Depends: debhelper-compat (= 13),
                libevdev-dev,
                libplymouth-dev (>= 24.004),
+               libpng-dev,
                libudev-dev,
                libxkbcommon-dev,
                pkgconf,
