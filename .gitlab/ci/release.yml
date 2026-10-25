@@ -1,7 +1,7 @@
 
 release:
   stage: release_and_publish
-  needs: [build-deb]
+  needs: [build-deb, build-deb-arm64]
   before_script:
     - apt-get update
     - apt-get install -y --no-install-recommends ca-certificates curl
@@ -23,7 +23,7 @@ release:
 # key of a hub user who may publish releases of this package.
 publish:
   stage: release_and_publish
-  needs: [build-deb]
+  needs: [build-deb, build-deb-arm64]
   # One publish at a time, so tags pushed together cannot both pass the
   # "newer than every release" check.
   resource_group: leios-hub

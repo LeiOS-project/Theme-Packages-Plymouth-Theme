@@ -12,6 +12,11 @@ require_var = $(if $(strip $1),,$(error Required variable is empty: $2))
 
 PKG_CONFIG ?= pkg-config
 
+# Architecture to build the package for; empty builds for this machine's.
+# The plugin makes the package architecture-specific, e.g. CI cross-builds
+# arm64 on amd64 with "make package HOST_ARCH=arm64".
+HOST_ARCH ?=
+
 all: package
 
 # Safe cleanup used by debhelper: only removes generated files that are not
@@ -36,7 +41,7 @@ package:
 	@:$(call require_var,$(PACKAGE_NAME),PACKAGE_NAME)
 	@:$(call require_var,$(DEB_BUILD_OUTPUT_DIR),DEB_BUILD_OUTPUT_DIR)
 	mkdir -p "$(DEB_BUILD_OUTPUT_DIR)"
-	dpkg-buildpackage -us -uc -b
+	dpkg-buildpackage -us -uc -b $(if $(HOST_ARCH),--host-arch=$(HOST_ARCH))
 	mv ../$(PACKAGE_NAME)_*.deb ../$(PACKAGE_NAME)_*.changes ../$(PACKAGE_NAME)_*.buildinfo "$(DEB_BUILD_OUTPUT_DIR)/" 2>/dev/null || true
 
 install: package

@@ -34,3 +34,24 @@ build-deb:
       - deb-build/*.changes
       - deb-build/*.buildinfo
     expire_in: 1 hour
+
+# The theme's Plymouth plugin makes the package architecture-specific: arm64 is
+# cross-compiled on the amd64 runner.
+build-deb-arm64:
+  stage: build
+  needs: [validate-tag]
+  before_script:
+    - dpkg --add-architecture arm64
+    - apt-get update
+    - apt-get install -y --no-install-recommends build-essential crossbuild-essential-arm64 debhelper devscripts
+    # Build-Depends from debian/control, for arm64
+    - apt-get build-dep -y --no-install-recommends --host-architecture arm64 ./
+  script:
+    - make clean
+    - make package HOST_ARCH=arm64
+  artifacts:
+    paths:
+      - deb-build/*.deb
+      - deb-build/*.changes
+      - deb-build/*.buildinfo
+    expire_in: 1 hour
